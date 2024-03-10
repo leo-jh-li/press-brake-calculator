@@ -60,6 +60,9 @@ fun BendCalculatorApp(filesDir : File) {
 }
 
 fun isNumber(input: String): Boolean {
+    if (input == "") {
+        return false
+    }
     val integerChars = '0'..'9'
     var decimalQuantity = 0
     return input.all { it in integerChars || it == '.' && decimalQuantity++ < 1 }
@@ -94,7 +97,7 @@ fun InputFields(filesDir : File, modifier: Modifier = Modifier) {
             if (bestSlope == UNCONFIGURED_SLOPE) {
                 return
             }
-            if (gaugeText.isEmpty() || !isNumber(gaugeText) || degreesText.isEmpty() || !isNumber(degreesText)) {
+            if (!isNumber(gaugeText) || !isNumber(degreesText)) {
                 return
             }
             bendText = roundBendPoint(calculateBendPoint(gaugeText.toInt(), degreesText.toFloat()))
@@ -156,6 +159,9 @@ fun adjustBendForGauge(bendValue : String, gauge : String) : String {
 }
 
 fun logValues(filesDir : File, bendText: String, gaugeText: String, degreesText: String) {
+    if (!isNumber(bendText) || !isNumber(gaugeText) || !isNumber(degreesText)) {
+        return
+    }
     // Adjust bend value based on gauge
     val adjustedBend = adjustBendForGauge(bendText, gaugeText)
 
