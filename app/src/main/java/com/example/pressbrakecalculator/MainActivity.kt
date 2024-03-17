@@ -209,5 +209,9 @@ fun calculateBestSlope(filesDir : File) {
         sigmaXY += x * y
     }
 
+    if (n <= 1) {
+        return
+    }
+
     bestSlope = (n * sigmaXY - sigmaX * sigmaY) / (n * sigmaXSquared - sigmaX * sigmaX)
 }
