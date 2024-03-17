@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -19,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.pressbrakecalculator.ui.theme.PressBrakeCalculatorTheme
@@ -27,9 +29,9 @@ import java.io.FileOutputStream
 import java.io.PrintWriter
 
 const val FILE_NAME = "bending_data.txt"
-const val OFFSET_18_GAUGE = 10
-const val OFFSET_20_GAUGE = 30
-const val OFFSET_24_GAUGE = 45
+const val OFFSET_18_GAUGE = 0.010f
+const val OFFSET_20_GAUGE = 0.030f
+const val OFFSET_24_GAUGE = 0.045f
 const val BASE_BND_VALUE = 5.96f
 const val BASE_DEGREES = 90
 const val UNCONFIGURED_SLOPE : Float = -999f
@@ -107,21 +109,24 @@ fun InputFields(filesDir : File, modifier: Modifier = Modifier) {
             value = bendText,
             onValueChange = { bendText = it },
             label = { Text("BND Point") },
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         )
 
         TextField(
             value = gaugeText,
             onValueChange = { gaugeText = it; updateBendPoint() },
             label = { Text("Gauge") },
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         )
 
         TextField(
             value = degreesText,
             onValueChange = { degreesText = it; updateBendPoint() },
             label = { Text("Degrees") },
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         )
 
         Button(onClick = {
