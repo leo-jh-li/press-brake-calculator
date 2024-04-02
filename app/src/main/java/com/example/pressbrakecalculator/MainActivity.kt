@@ -27,16 +27,15 @@ import com.example.pressbrakecalculator.ui.theme.PressBrakeCalculatorTheme
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
+import kotlin.math.*
 
 const val FILE_NAME = "bending_data.txt"
-const val OFFSET_18_GAUGE = 0.010f
-const val OFFSET_20_GAUGE = 0.030f
-const val OFFSET_24_GAUGE = 0.045f
-const val BASE_BND_VALUE = 5.96f
 const val BASE_DEGREES = 90
-const val UNCONFIGURED_SLOPE : Float = -999f
-var bestSlope : Float = UNCONFIGURED_SLOPE
-
+// Map of gauge as an int to ArrayList of (degree, BND) Pairs
+val dataMap = HashMap<Int, ArrayList<Pair<Float, Float>>>()
+val bestSlopes = HashMap<Int, Float>()
+// The base degree and bend value to use for each gauge, typically a pair of 90 degrees bend
+val baseBendValues = HashMap<Int, Pair<Float, Float>>()
 
 class MainActivity : ComponentActivity() {
 
@@ -44,7 +43,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             PressBrakeCalculatorTheme {
-                calculateBestSlope(filesDir)
+                initializeMapFromFile(filesDir)
                 BendCalculatorApp(filesDir)
             }
         }
@@ -62,7 +61,7 @@ fun BendCalculatorApp(filesDir : File) {
 }
 
 fun isNumber(input: String): Boolean {
-    if (input == "") {
+    if (input == "" || input == ".") {
         return false
     }
     val integerChars = '0'..'9'
@@ -81,8 +80,9 @@ fun roundBendPoint(bendPoint : String) : String {
 // Calculate and return the estimated BND point value that will result in the given degrees for the given gauge.
 // Output has undefined behaviour if the best fit slope has not yet been calculated.
 fun calculateBendPoint(gauge : Int, degrees : Float) : Float {
-    val degreeDifference = degrees - BASE_DEGREES
-    return (BASE_BND_VALUE + (bestSlope * degreeDifference))
+    val base = baseBendValues[gauge]
+    val degreeDifference = degrees - base!!.first
+    return (base.second + (bestSlopes[gauge]!! * degreeDifference))
 }
 
 @Composable
@@ -96,10 +96,10 @@ fun InputFields(filesDir : File, modifier: Modifier = Modifier) {
         var degreesText by remember { mutableStateOf("") }
 
         fun updateBendPoint() {
-            if (bestSlope == UNCONFIGURED_SLOPE) {
+            if (!isNumber(gaugeText) || !isNumber(degreesText)) {
                 return
             }
-            if (!isNumber(gaugeText) || !isNumber(degreesText)) {
+            if (!bestSlopes.containsKey(gaugeText.toInt())) {
                 return
             }
             bendText = roundBendPoint(calculateBendPoint(gaugeText.toInt(), degreesText.toFloat()))
@@ -142,43 +142,35 @@ fun InputFields(filesDir : File, modifier: Modifier = Modifier) {
     }
 }
 
-// Normalizes given bend point value to use the base gauge (16) instead of the given gauge and returns it
-fun adjustBendForGauge(bendValue : String, gauge : String) : String {
-    var ret : Float = 0f
-    try {
-        ret = bendValue.toFloat()
-        when (gauge) {
-            "16" -> { }
-            "18" -> ret -= OFFSET_18_GAUGE
-            "20" -> ret -= OFFSET_20_GAUGE
-            "24" -> ret -= OFFSET_24_GAUGE
-            else -> {
-                Log.d("adjustBendForGauge()", "Gauge $gauge not recognized")
-            }
-        }
-        return ret.toString()
-    } catch (e : Throwable) {
-
-    }
-    return bendValue
-}
-
 fun logValues(filesDir : File, bendText: String, gaugeText: String, degreesText: String) {
     if (!isNumber(bendText) || !isNumber(gaugeText) || !isNumber(degreesText)) {
         return
     }
-    // Adjust bend value based on gauge
-    val adjustedBend = adjustBendForGauge(bendText, gaugeText)
 
     val file : File = File(filesDir, FILE_NAME)
     val pw = PrintWriter(FileOutputStream(file, true))
-    pw.println("$degreesText,$adjustedBend")
+    pw.println("$gaugeText,$degreesText,$bendText")
     pw.close()
 
-    calculateBestSlope(filesDir)
+    Log.d("logValues", "logged gauge $gaugeText, degrees $degreesText, BND point $bendText")
+
+    addToDataMap(gaugeText.toInt(), degreesText.toFloat(), bendText.toFloat())
+    calculateBestSlope(gaugeText.toInt())
 }
 
-fun calculateBestSlope(filesDir : File) {
+fun addToDataMap(gauge : Int, degrees: Float, bendPoint: Float) {
+    if (!dataMap.containsKey(gauge)) {
+        // Create new map entry and give it new data point
+        dataMap[gauge] = arrayListOf(Pair(degrees, bendPoint))
+    } else {
+        // Add new data point to existing map entry
+        dataMap[gauge] = ArrayList(dataMap.getValue(gauge) + Pair(degrees, bendPoint))
+    }
+    tryUpdateBaseBendValues(gauge, degrees, bendPoint)
+}
+
+// Populate the dataMap by reading data from the file
+fun initializeMapFromFile(filesDir : File) {
     val file : File = File(filesDir, FILE_NAME)
     if (!file.exists()) {
         return
@@ -187,6 +179,46 @@ fun calculateBestSlope(filesDir : File) {
     val contents = file.readText()
     val data = contents.split("\n").toTypedArray()
 
+    // Process each data point
+    for (line in data) {
+        if (line.isEmpty()) {
+            continue
+        }
+        val splitLine = line.split(",").toTypedArray()
+        val gauge: Int = splitLine[0].toInt()
+        val x: Float = splitLine[1].toFloat()
+        val y: Float = splitLine[2].toFloat()
+
+        addToDataMap(gauge, x, y)
+    }
+
+    Log.d("dataMap updated", "current dataMap: $dataMap")
+
+    calculateBestSlopes()
+}
+
+// Update a gauge's base bend value if it's close to 90 degrees
+fun tryUpdateBaseBendValues(gauge : Int, degrees: Float, bendPoint : Float) {
+    if (!baseBendValues.containsKey(gauge) ||
+        abs(BASE_DEGREES - degrees) < abs(BASE_DEGREES - baseBendValues[gauge]!!.first)) {
+        baseBendValues[gauge] = Pair(degrees, bendPoint)
+    }
+}
+
+// Calculate the best slopes for each gauge that has a key in the dataMap
+fun calculateBestSlopes() {
+    for ((key, value) in dataMap) {
+        calculateBestSlope(key)
+    }
+}
+
+// Calculate the best slope for the given gauge
+fun calculateBestSlope(gauge : Int) {
+    if (!dataMap.containsKey(gauge) || dataMap[gauge]!!.size <= 1) {
+        Log.d("calculateBestSlope", "failed to calculate best slope for gauge $gauge due to insufficient data (<= 1)")
+        return
+    }
+
     var n = 0
     var sigmaX : Float = 0f
     var sigmaXSquared : Float = 0f
@@ -194,24 +226,20 @@ fun calculateBestSlope(filesDir : File) {
     var sigmaXY : Float = 0f
 
     // Process each data point
-    for (line in data) {
-        if (line.isEmpty()) {
-            continue
-        }
-        val splitLine = line.split(",").toTypedArray()
-        Log.d("calculateBestSlope", "Reading line $line")
+    for (pair in dataMap[gauge]!!) {
         n++
-        val x : Float = splitLine[0].toFloat()
-        val y : Float = splitLine[1].toFloat()
+        val x : Float = pair.first
+        val y : Float = pair.second
         sigmaX += x
         sigmaXSquared += x * x
         sigmaY += y
         sigmaXY += x * y
     }
 
-    if (n <= 1) {
-        return
-    }
+    val bestSlope = (n * sigmaXY - sigmaX * sigmaY) / (n * sigmaXSquared - sigmaX * sigmaX)
 
-    bestSlope = (n * sigmaXY - sigmaX * sigmaY) / (n * sigmaXSquared - sigmaX * sigmaX)
+    // Ignore bad slopes that would result for example if all the data points have the same x
+    if (!bestSlope.isNaN() && !bestSlope.isInfinite()) {
+        bestSlopes[gauge] = bestSlope
+    }
 }
